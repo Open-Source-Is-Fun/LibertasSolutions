@@ -7,6 +7,6 @@ The post (k)ubuntu installation script installs the default application and "nic
 
 The script can be run with the command:
 ```shell
-wget -O - https://raw.githubusercontent.com/Open-Source-Is-Fun/LibertasSolutions/refs/heads/main/postInstall.sh | bash
+wget -O - https://raw.githubusercontent.com/Open-Source-Is-Fun/LibertasSolutions/refs/heads/main/postInstallation.sh | bash
 ```
 The script logs can be found here: `/var/log/postinstall.log`
