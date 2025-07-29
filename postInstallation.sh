@@ -24,19 +24,37 @@ fi
 
 log "START" "Post-installation script started"
 
-# Package lists to install
-packages_pre=(
+# Package lists to install. Packages that are os flavor spesific can be distinguished by adding ":<os flavor>" at the end of the package name. Accaptable flavor values are: ubuntu, kubuntu
+packages_apt_pre=(
     "flameshot"
     "flatpak"
-    "gnome-software-plugin-flatpak"
+    "gnome-software-plugin-flatpak:ubuntu"
+    "kde-config-flatpak:kubuntu"
     "curl"
     "simple-scan"
     "vlc"
     "libreoffice"
 )
-packages_post=(
+packages_apt_post=(
     "brave-browser"
 )
+packages_flatpak=(
+    "com.rustdesk.RustDesk"
+)
+
+
+# State the preferred way to install applications not in the apt repository. Acceptable value is either: flatpak or deb
+installPreference="flatpak"
+
+detect_os_flavor() {
+    if grep -qi kubuntu /etc/os-release; then
+        echo "kubuntu"
+    elif grep -qi ubuntu /etc/os-release; then
+        echo "ubuntu"
+    else
+        echo "unknown"
+    fi
+}
 
 add_brave_repo() {
     log "REPO" "Adding Brave browser repository"
@@ -81,7 +99,7 @@ install_appimagelauncher_github() {
     rm -f "$file"
 }
 
-install_rustdesk() {
+install_rustdesk_github() {
     log "INSTALL" "Installing latest RustDesk release"
     url=$(curl -s https://api.github.com/repos/rustdesk/rustdesk/releases/latest \
         | grep "browser_download_url.*x86_64.deb" \
@@ -101,11 +119,26 @@ install_rustdesk() {
     rm -f "$file"
 }
 
-install_packages() {
+install_apt_packages() {
+    local list=("$@")
+    for pkg_entry in "${list[@]}"; do
+        pkg="${pkg_entry%%:*}"
+        tag="${pkg_entry##*:}"
+
+        if [[ "$pkg_entry" == "$pkg" || "$tag" == "$OS_FLAVOR" ]]; then
+            log "INSTALL" "Installing apt: $pkg"
+            apt-get install -y "$pkg" || log "WARN" "Failed to install $pkg"
+        else
+            log "SKIP" "Skipping $pkg (tagged for $tag)"
+        fi
+    done
+}
+
+install_flatpak_packages() {
     local list=("$@")
     for pkg in "${list[@]}"; do
-        log "INSTALL" "Installing $pkg"
-        apt-get install -y "$pkg" || log "WARN" "Failed to install $pkg"
+        log "INSTALL" "Installing flatpak: $pkg"
+        flatpak install -y flathub "$pkg" || log "WARN" "Failed to install $pkg"
     done
 }
 
@@ -131,19 +164,36 @@ detect_and_install_gpu_driver() {
 }
 
 main() {
+    OS_FLAVOR=$(detect_os_flavor)
+    log "INFO" "Detected OS flavor: $OS_FLAVOR"
+
     log "APT" "Updating package lists..."
     apt-get update
 
-    install_packages "${packages_pre[@]}"
+    install_apt_packages "${packages_apt_pre[@]}"
     add_flathub_repo
     add_brave_repo
 
     log "APT" "Updating package lists after adding repos..."
     apt-get update
 
-    install_packages "${packages_post[@]}"
+    install_apt_packages "${packages_apt_post[@]}"
+    case "$installPreference" in
+        flatpak)
+            install_flatpak_packages "${packages_flatpak[@]}"
+            ;;
+
+        deb)
+            install_rustdesk_github || log "WARN" "RustDesk install failed"
+            ;;
+
+        *)
+            log "ERROR" "No flatpak or deb packages installed because of incorrect value of 'installPreference'. Usage: [flatpak|deb] - Value set: $0"
+            exit 1
+            ;;
+        esac
+
     install_appimagelauncher_github || log "WARN" "AppImageLauncher install failed"
-    install_rustdesk || log "WARN" "RustDesk install failed"
 
     if systemd-detect-virt -q; then
         log "ENV" "Running inside a VM ($(systemd-detect-virt)) — skipping GPU driver installation"
