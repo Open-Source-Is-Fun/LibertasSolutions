@@ -46,10 +46,47 @@ packages_flatpak=(
 # State the preferred way to install applications not in the apt repository. Acceptable value is either: flatpak or deb
 installPreference="flatpak"
 
+prompt_user_config() {
+    echo ""
+    echo "Detected OS Flavor: $OS_FLAVOR"
+    while true; do
+        read -rp "Is this the correct OS flavor? Press [Enter] to confirm or type [ubuntu|kubuntu] to override: " input
+        if [[ -z "$input" ]]; then
+            break
+        elif [[ "$input" =~ ^(ubuntu|kubuntu)$ ]]; then
+            OS_FLAVOR="$input"
+            break
+        else
+            echo "Invalid input. Please enter 'ubuntu' or 'kubuntu', or press Enter."
+        fi
+    done
+
+    echo "Default installation method for non apt packages is: $installPreference"
+    while true; do
+        read -rp "Is this the preferred method? Press [Enter] to confirm or type [flatpak|deb] to override: " input
+        if [[ -z "$input" ]]; then
+            break
+        elif [[ "$input" =~ ^(flatpak|deb)$ ]]; then
+            installPreference="$input"
+            break
+        else
+            echo "Invalid input. Please enter 'flatpak' or 'deb', or press Enter."
+        fi
+    done
+
+    echo ""
+    log "CONFIG" "Final OS Flavor: $OS_FLAVOR"
+    log "CONFIG" "Final Install Method: $installPreference"
+}
+
 detect_os_flavor() {
-    if grep -qi kubuntu /etc/os-release; then
+    if [[ "$XDG_CURRENT_DESKTOP" =~ KDE ]]; then
         echo "kubuntu"
-    elif grep -qi ubuntu /etc/os-release; then
+    elif [[ "$XDG_CURRENT_DESKTOP" =~ GNOME ]]; then
+        echo "ubuntu"
+    elif dpkg -l | grep -q plasma-desktop; then
+        echo "kubuntu"
+    elif dpkg -l | grep -q gnome-shell; then
         echo "ubuntu"
     else
         echo "unknown"
@@ -165,7 +202,7 @@ detect_and_install_gpu_driver() {
 
 main() {
     OS_FLAVOR=$(detect_os_flavor)
-    log "INFO" "Detected OS flavor: $OS_FLAVOR"
+    prompt_user_config
 
     log "APT" "Updating package lists..."
     apt-get update
@@ -178,6 +215,7 @@ main() {
     apt-get update
 
     install_apt_packages "${packages_apt_post[@]}"
+
     case "$installPreference" in
         flatpak)
             install_flatpak_packages "${packages_flatpak[@]}"
